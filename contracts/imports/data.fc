@@ -1,0 +1,37 @@
+{-
+uninit$0 jetton_masters:(Maybe ^Cell as map<Int, Address>) = ContractData;
+
+init$1 jetton_wallets:(Maybe ^Cell as map<Address, Address>)
+       assets:(Maybe ^Cell as map<Address, Int as uint256>)
+       assets_sum:(Int as uint256) = ContractData;
+-}
+
+const slice zero_asset = "00000000000000000000000000000000"s;
+
+global cell jetton_wallets;
+global cell assets;
+global int assets_sum;
+
+global cell jetton_masters;
+
+int load_contract() impure inline {
+    slice ds = get_data().begin_parse();
+    if (ds~load_uint(1)) {
+        jetton_wallets = ds~load_dict();
+        assets = ds~load_dict();
+        assets_sum = ds~load_uint(256);
+        return 1;
+    } else {
+        jetton_masters = ds~load_dict();
+        return 0;
+    }
+}
+() save_contract() impure inline {
+    set_data(begin_cell()
+        .store_uint(1, 1)
+        .store_dict(jetton_wallets)
+        .store_dict(assets)
+        .store_uint(assets_sum, 256)
+        .end_cell());
+}
+

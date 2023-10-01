@@ -1,0 +1,42 @@
+import "@stdlib/deploy";
+
+contract MultitokenDex with Deployable {
+    jetton_wallets: map<Address, Address>;
+    assets: map<Address, Int>;
+    owner_address: Address;
+    
+    init(owner: Address, n: Int, ) {
+        
+    }
+    
+    receive(msg: TokenNotification) {
+        let ctx: Context = context();
+        let old_balance_src: Int? = self.assets.get(ctx.sender);
+        let received: Int = msg.amount;
+        
+        // unknown token
+        if (old_balance_src == null) {
+            self.transferJettonTo(ctx.sender, self.owner_address,
+                received, msg.queryId, "Unknown original jetton");
+            return;
+        }
+        
+        // insufficient value to process token
+        if (ctx.value <= ton("0.4")) {
+            self.transferJettonTo(ctx.sender, msg.from, received,
+                msg.queryId, "Insufficient value to process token");
+            return;
+        }
+        
+        let swap: Swap = msg.forwardPayload % Swap;
+        let other_jw: Address =
+            self.jetton_wallets.get(swap.otherJettonMaster)!!;
+        let old_balance_dst: Int = self.assets.get(other_jw)!!;
+        
+        let swap_value = self.calc_swap(old_balance_src,
+            old_balance_dst, received);
+        
+        self.transferJettonTo(ctx.sender, other_jw,
+            )
+    }
+}

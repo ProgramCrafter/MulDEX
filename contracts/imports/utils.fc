@@ -1,0 +1,15 @@
+(slice, (int, slice)) ~load_bounce_source(slice in_msg_full) {
+    int bounced = in_msg_full~load_uint(4) & 1;
+    slice source = in_msg_full~load_msg_addr();
+    return (in_msg_full, (bounced, source));
+}
+
+() terminate_if(int) impure asm "IFRETALT";
+() terminate()       impure asm "RETALT";
+
+(cell, (slice, slice)) ~pop_max(cell dict, int key_len)
+  asm(-> 0 2 1) "DICTREMMAX" "100 THROWIFNOT";
+
+(slice, int) dict_get?(cell dict, int key_len, slice index)
+  asm(index dict key_len) "DICTGET" "NULLSWAPIFNOT";
+

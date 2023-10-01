@@ -1,0 +1,40 @@
+#include "./imports/utils.fc";
+
+{-
+    global cell jetton_wallets;
+    global cell assets;
+    global int assets_sum;
+    
+    global cell jetton_masters;
+-}
+#include "./imports/data.fc";
+
+#include "./imports/messages.fc";
+
+
+() recv_internal(int msg_value, cell in_msg, slice in_msg_body) {
+    slice in_msg_full = in_msg.begin_parse();
+    (int bounced, slice sender) = in_msg_full~load_bounce_source();
+    terminate_if(bounced);
+    
+    int op = in_msg_body~load_uint(32);
+    
+    ;; uninit contract returns `false`
+    if (~ load_contract()) {
+        terminate_if(op != op::dex_init);
+        
+        jetton_wallets = in_msg_body~load_dict();
+        while (~ jetton_masters.dict_empty?()) {
+            (_, slice master) = jetton_masters~pop_max(267);
+            (slice wallet_addr, int ok) = jetton_wallets.dict_get?(267, master);
+            throw_unless(101, ok);
+            assets~dict_set(267, wallet_addr, zero_asset);
+        }
+        assets_sum = 0;
+        
+        save_contract();
+        return ();
+    }
+    
+    
+}

@@ -1,0 +1,18 @@
+struct Swap {
+    other_jetton_master: Address;
+    min_swap_value: Int;
+    swap_to: Address?;
+}
+
+struct LiquidityTransaction {
+    commit_after: map<Address, Int>;
+}
+
+struct LiquidityRevert {}
+
+struct DexInteraction {
+    sw: Swap?;
+    lt: LiquidityTransaction?;
+    lr: LiquidityRevert?;
+}
+

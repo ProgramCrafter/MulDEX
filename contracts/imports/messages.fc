@@ -1,0 +1,38 @@
+;; op::dex_init#2CD21E85 jetton_wallets:(Maybe ^Cell as map<Address, Address>)
+;;     = InMsgBody;
+
+const int op::dex_init = 0x2CD21E85;
+
+
+
+;; transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16)
+;;     destination:MsgAddress response_destination:MsgAddress
+;;     custom_payload:(Maybe ^Cell) forward_ton_amount:(VarUInteger 16)
+;;     forward_payload:(Either Cell ^Cell) = OutMsgBody;
+
+const int op::transfer_send = 0x0F8A7EA5;
+
+() send_jettons(slice jetton_wallet, int query_id, int amount, slice dest,
+                slice comment) impure inline {
+    cell forward = begin_cell().store_uint(0, 32).store_slice(comment)
+                  .end_cell();
+    send_raw_message(begin_cell()
+        .store_uint(0x10, 6)
+        .store_slice(jetton_wallet)
+        .store_uint(op::transfer_send, 4 + 107 + 32)
+        .store_uint(query_id, 64)
+        .store_coins(amount)
+        .store_slice(dest)
+        .store_uint(0, 3)
+        .store_coins(10 * 1000000)
+        .store_dict(forward)
+        .end_cell(), 64);
+}
+
+
+
+;; transfer_notification#7362d09c query_id:uint64 amount:(VarUInteger 16)
+;;     sender:MsgAddress forward_payload:(Either Cell ^Cell) = InMsgBody;
+
+const int op::transfer_recv = 0x7362D09C;
+
