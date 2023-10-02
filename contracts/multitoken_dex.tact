@@ -9,7 +9,6 @@ native fillZeros(jetton_wallets: map<Address, Address>): map<Address, Int>;
 message DexDeploy {
     query_id: Int as uint64;
     jetton_wallets: map<Address, Address>;
-    assets: map<Address, Int>;
 }
 
 message(0x7362d09c) TokenNotification {
@@ -56,7 +55,7 @@ contract MultitokenDex {
         require(self.jetton_wallets.asCell() == null, "Already set");
         self.jetton_wallets = msg.jetton_wallets; // some jettons do not support TEP-89
         self.assets = fillZeros(msg.jetton_wallets);
-        nativeReserve(self.min_storage, 2);
+        nativeReserve(self.min_storage, 1);
         self.notify(null);
     }
     
