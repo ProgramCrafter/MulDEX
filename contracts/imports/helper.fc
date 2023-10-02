@@ -1,0 +1,10 @@
+const slice zero_asset = "00000000000000000000000000000000"s;
+
+cell fill_zeros(cell jetton_masters) {
+    cell assets = new_dict();
+    while (~ jetton_masters.dict_empty?()) {
+        var(_, wallet_addr, _) = jetton_masters~dict::delete_get_min(267);
+        assets~dict_set(267, wallet_addr, zero_asset);
+    }
+    return assets;
+}
