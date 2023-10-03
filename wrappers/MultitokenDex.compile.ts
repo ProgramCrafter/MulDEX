@@ -1,6 +1,6 @@
 import { CompilerConfig } from '@ton-community/blueprint';
 
 export const compile: CompilerConfig = {
-    lang: 'func',
-    targets: ['contracts/imports/stdlib.fc', 'contracts/multitoken_dex.fc'],
+    lang: 'tact',
+    target: 'contracts/multitoken_dex.tact'
 };
