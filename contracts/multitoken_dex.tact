@@ -36,7 +36,6 @@ struct SystemInfo {
 }
 
 contract MultitokenDex {
-    const min_storage: Int = ton("0.05");
     const forward_ton_amount: Int = ton("0.000001");
     id: Int as uint64; // to create more than one pool
     jetton_wallets: map<Address, Address>;
@@ -55,8 +54,12 @@ contract MultitokenDex {
         require(self.jetton_wallets.asCell() == null, "Already set");
         self.jetton_wallets = msg.jetton_wallets; // some jettons do not support TEP-89
         self.assets = fillZeros(msg.jetton_wallets);
-        nativeReserve(self.min_storage, 1);
-        self.notify(null);
+        send(SendParameters{
+            to: sender(),
+            value: 0,
+            mode: 64,
+            body: "Deployed".asComment()
+        });
     }
     
     receive(msg: TokenNotification) {

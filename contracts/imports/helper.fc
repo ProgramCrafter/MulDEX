@@ -2,9 +2,10 @@
 
 cell fill_zeros(cell jetton_masters) {
     cell assets = new_dict();
+    slice zero_cs = begin_cell().store_int(0,257).end_cell().begin_parse(); 
     while (~ jetton_masters.dict_empty?()) {
         var(_, wallet_addr, _) = jetton_masters~dict::delete_get_min(267);
-        assets~dict_set(267, wallet_addr, begin_cell().store_int(0,257).end_cell().begin_parse());
+        assets~dict_set(267, wallet_addr, zero_cs);
     }
     return assets;
 }
