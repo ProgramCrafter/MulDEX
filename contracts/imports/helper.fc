@@ -1,8 +1,8 @@
-;; const slice zero_asset = "00000000000000000000000000000000"s;
+slice tact_fill_zeros() asm "x{0000000000000000000000000000000000000000000000000000000000000000} b{0} |+ PUSHSLICE";
 
 cell fill_zeros(cell jetton_masters) {
     cell assets = new_dict();
-    slice zero_cs = begin_cell().store_int(0,257).end_cell().begin_parse(); 
+    slice zero_cs = tact_fill_zeros(); 
     while (~ jetton_masters.dict_empty?()) {
         var(_, wallet_addr, _) = jetton_masters~dict::delete_get_min(267);
         assets~dict_set(267, wallet_addr, zero_cs);

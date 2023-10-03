@@ -57,7 +57,7 @@ contract MultitokenDex {
         send(SendParameters{
             to: sender(),
             value: 0,
-            mode: 64,
+            mode: SendRemainingValue,
             body: "Deployed".asComment()
         });
     }
@@ -100,7 +100,7 @@ contract MultitokenDex {
             send(SendParameters{
                 to: jetton_wallet,
                 value: 0,
-                mode: 64,
+                mode: SendRemainingValue,
                 body: JettonTransfer{query_id: query_id, amount: amount, destination: destination, response_destination: destination, custom_payload: message.asComment(), forward_ton_amount: self.forward_ton_amount, forward_payload: emptySlice()}.toCell()
             });
         }
