@@ -1,11 +1,12 @@
 slice tact_fill_zeros() asm "x{0000000000000000000000000000000000000000000000000000000000000000} b{0} |+ PUSHSLICE";
 
-cell fill_zeros(cell jetton_masters) {
+cell fill_zeros(cell jetton_masters, int want_len) impure inline_ref {
     cell assets = new_dict();
-    slice zero_cs = tact_fill_zeros(); 
     while (~ jetton_masters.dict_empty?()) {
         var(_, wallet_addr, _) = jetton_masters~dict::delete_get_min(267);
-        assets~dict_set(267, wallet_addr, zero_cs);
+        assets~dict_set(267, wallet_addr, tact_fill_zeros());
+        want_len -= 1;
     }
+    throw_if(170, want_len);
     return assets;
 }

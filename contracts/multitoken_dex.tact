@@ -1,10 +1,14 @@
 import "./imports/helper.fc";
 
+
+
 @name(muldiv)
 native mulDiv(a: Int, b: Int, c: Int): Int;
 
 @name(fill_zeros)
-native fillZeros(jetton_wallets: map<Address, Address>): map<Address, Int>;
+native fillZerosCheckLen(jetton_wallets: map<Address, Address>, want_len: Int): map<Address, Int>;
+
+
 
 message DexDeploy {
     query_id: Int as uint64;
@@ -28,32 +32,50 @@ message(0x0f8a7ea5) JettonTransfer {
     forward_payload: Slice as remaining;
 }
 
+
+
 struct SystemInfo {
     id: Int as uint64;
     jetton_wallets: map<Address, Address>;
-    assets: map<Address, Int>; // better to set type coins to values, but tact does not support it now :C
-    owner_address: Address; // owner is not actually needed for current implementation, but let it be
+    assets: map<Address, Int>;  // better to set type coins to values, but tact does not support it now :C
+    owner_address: Address;
 }
 
+struct Swap {
+    otherJettonMaster: Address;
+    // TODO (see below): otherJettonMinExpected: Int as coins;
+}
+
+
+
+@interface("ton.experimental.pcrafter.multitokendex")
 contract MultitokenDex {
     const forward_ton_amount: Int = ton("0.000001");
-    id: Int as uint64; // to create more than one pool
-    jetton_wallets: map<Address, Address>;
-    assets: map<Address, Int>;
-    owner_address: Address; // owner is not actually needed for current implementation, but let it be
     
-    init(id: Int, owner: Address) {
+    id: Int as uint64;       // to create more than one pool
+    owner_address: Address;  // owner is only required for initialization
+    
+    tokens_count: Int as uint16;
+    jetton_wallets: map<Address, Address>;  // jetton master -> our wallet
+    assets: map<Address, Int>;              // our jetton wallet -> balance
+    swap_base: Int as uint128 = 0;          // base value for calculating swaps, == `sum(assets)`
+    
+    init(id: Int, owner: Address, tokens_count: Int) {
         self.id = id;
         self.owner_address = owner;
+        self.tokens_count = tokens_count;
         self.assets = emptyMap();
-        self.jetton_wallets = emptyMap(); 
+        self.jetton_wallets = emptyMap();
     }
 
     receive(msg: DexDeploy) {
         require(sender() == self.owner_address, "Invalid sender");
-        require(self.jetton_wallets.asCell() == null, "Already set");
-        self.jetton_wallets = msg.jetton_wallets; // some jettons do not support TEP-89
-        self.assets = fillZeros(msg.jetton_wallets);
+        require(self.jetton_wallets.asCell() == null, "Already initialized");
+        
+        self.jetton_wallets = msg.jetton_wallets;
+        // some jettons do not support TEP-89 (discovery), and even if all did, it would unnecessarily complicate transactions network
+        
+        self.assets = fillZerosCheckLen(msg.jetton_wallets, self.tokens_count);
         send(SendParameters{
             to: sender(),
             value: 0,
@@ -63,36 +85,37 @@ contract MultitokenDex {
     }
     
     receive(msg: TokenNotification) {
-        // todo
-        // let ctx: Context = context();
-        // let old_balance_src: Int? = self.assets.get(ctx.sender);
-        // let received: Int = msg.amount;
+        let ctx: Context = context();
+        let old_balance_src: Int? = self.assets.get(ctx.sender);
+        let received: Int = msg.amount;
         
-        // // unknown token
-        // if (old_balance_src == null) {
-        //     self.transferJettonTo(ctx.sender, self.owner_address,
-        //         received, msg.query_id, "Unknown original jetton");
-        //     return;
-        // }
+        // unknown token
+        if (old_balance_src == null) {
+            self.transferJettonTo(ctx.sender, self.owner_address,
+                received, msg.query_id, "Unknown original jetton");
+            return;
+        }
         
-        // // insufficient value to process token
-        // if (ctx.value <= ton("0.4")) {
-        //     self.transferJettonTo(ctx.sender, msg.from, received,
-        //         msg.query_id, "Insufficient value to process token");
-        //     return;
-        // }
+        // insufficient value to process token
+        if (ctx.value <= ton("0.4")) {
+            self.transferJettonTo(ctx.sender, msg.from, received,
+                msg.query_id, "Insufficient value to process token");
+            return;
+        }
         
-        // let swap: Swap = msg.forwardPayload % Swap;
-        // let other_jw: Address =
-        //     self.jetton_wallets.get(swap.otherJettonMaster)!!;
-        // let old_balance_dst: Int = self.assets.get(other_jw)!!;
+        let swap: Swap = msg.forwardPayload % Swap;
+        let other_jw: Address = self.jetton_wallets.get(swap.otherJettonMaster)!!;
+        let old_balance_dst: Int = self.assets.get(other_jw)!!;
         
-        // let swap_value: Int = self.calcSwap(old_balance_src,
-        //     old_balance_dst, received); // simple func received_token1 / token_1_balance * token2_balance
+        let swap_value: Int = self.calc_swap(old_balance_src!!, old_balance_dst, received);
         
-        // self.transferJettonTo(other_jw, msg.sender, swap_value, msg.query_id, "Swap completed");
-        // self.assets.set(ctx.sender, old_balance_src + received);
-        // self.assets.set(other_jw, old_balance_dst - swap_value);
+        // TODO safeguard against slippage: paying attention to otherJettonMinExpected
+        // TODO safeguard against liquidity pool draining
+        
+        self.transferJettonTo(other_jw, msg.sender, swap_value, msg.query_id, "Swap completed");
+        self.assets.set(ctx.sender, old_balance_src + received);
+        self.assets.set(other_jw, old_balance_dst - swap_value);
+        self.swap_base = self.swap_base + received - swap_value;
     }
 
     fun transferJettonTo(jetton_wallet: Address, destination: Address, amount: Int, query_id: Int, message: String) {
@@ -106,11 +129,45 @@ contract MultitokenDex {
         }
     }
 
-    fun calcSwap(balance_token1: Int, balance_token2: Int, received_token1: Int): Int {
-        return mulDiv(received_token1, balance_token2, balance_token1);
+    fun calc_swap(had_token_src: Int, had_token_dst: Int, recv_token_src: Int): Int {
+        // Swap maintains invariant
+        // (balance1 * balance2 + balance1 * balance3 + ... + balance[n-1] * balance[n]) = const
+        
+        // It can be proven then that the swap is calculated as following:
+        return mulDiv(recv_token_src, self.swap_base - had_token_src, self.swap_base + recv_token_src - had_token_dst);
+        
+        // for two tokens, essentially equivalent to
+        // return mulDiv(recv_token_src, had_token_dst, had_token_src + recv_token_src);
     }
+    
+    
 
     get fun get_system_info(): SystemInfo {
         return SystemInfo{id: self.id, jetton_wallets: self.jetton_wallets, assets: self.assets, owner_address: self.owner_address};
+    }
+    
+    get fun get_swap_base(): Int {
+        return self.swap_base;
+    }
+    
+    get fun calc_price_multiplied(jetton_wallet: Address, multiplier: Int): Int {
+        let asset: Int = self.assets.get(jetton_wallet)!!;
+        let v: Int = self.swap_base * (self.tokens_count - 1);
+        return mulDiv(self.swap_base - asset, multiplier, v);
+    }
+    
+    // get fun calc_all_prices_multiplied(multiplier: Int): map<Address, Int>
+    //     Tact doesn't support iteration over maps, though
+    
+    get fun calc_swap_by_jw_addrs(jetton_src: Address, jetton_dst: Address, value_src: Int): Int {
+        let asset_src: Int = self.assets.get(jetton_src)!!;
+        let asset_dst: Int = self.assets.get(jetton_dst)!!;
+        return calc_swap(asset_src, asset_dst, value_src);
+    }
+    
+    get fun calc_swap_by_master_addrs(jetton_src: Address, jetton_dst: Address, value_src: Int): Int {
+        let asset_src: Int = self.assets.get(self.jetton_wallets.get(jetton_src)!!)!!;
+        let asset_dst: Int = self.assets.get(self.jetton_wallets.get(jetton_dst)!!)!!;
+        return calc_swap(asset_src, asset_dst, value_src);
     }
 }
