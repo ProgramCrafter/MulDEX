@@ -9,7 +9,7 @@ native mulDiv(a: Int, b: Int, c: Int): Int;
 native fillZerosCheckLen(jetton_wallets: map<Address, Address>, want_len: Int): map<Address, Int>;
 
 @name(load_msg_addr)
-extends mutates native fun loadAddress(self: Slice): Address;
+extends mutates native loadAddress(self: Slice): Address;
 // SAFETY: doesn't check if address is std-type
 
 
@@ -112,6 +112,8 @@ contract MultitokenDex {
             self.transferJettonTo(ctx.sender, msg.sender, received,
                 msg.query_id, "Unknown operation");
         }
+        // SAFETY: we test whether provided address is among listed jetton masters
+        // it can fail due to invalid key length, but that's hard to achieve and doesn't harm DEX
         let otherJettonMaster: Address = swap.loadAddress();
         
         
