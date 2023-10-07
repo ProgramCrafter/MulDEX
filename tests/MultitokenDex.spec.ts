@@ -21,7 +21,7 @@ describe('MultitokenDex', () => {
 
         const deployResult = await multitokenDex.send(deployer.getSender(),
             { value: toNano('0.05'), },
-            { $$type: 'Deploy', queryId: 0n, });
+            null);
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
             to: multitokenDex.address,
@@ -40,7 +40,7 @@ describe('MultitokenDex', () => {
         
         // filling jetton wallets list
         for (let item of jettonMasters) {
-            let get_result = blockchain.provider(item).get("get_wallet_address", tuple.build());
+            let get_result = await blockchain.provider(item).get("get_wallet_address", tuple.build());
             dict.set(item, get_result.stack.readAddress());
         }
         
