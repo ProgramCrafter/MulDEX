@@ -8,10 +8,6 @@ native mulDiv(a: Int, b: Int, c: Int): Int;
 @name(fill_zeros)
 native fillZerosCheckLen(jetton_wallets: map<Address, Address>, want_len: Int): map<Address, Int>;
 
-@name(load_msg_addr)
-extends mutates native loadAddress(self: Slice): Address;
-// SAFETY: doesn't check if address is std-type
-
 
 
 message DexDeploy {
@@ -45,8 +41,7 @@ struct SystemInfo {
     owner_address: Address;
 }
 
-// swap#4a2663c4 otherJettonMaster:MsgAddressInt = Swap;
-// TODO (see below): add also  otherJettonMinExpected:(VarUInteger 16)
+// swap#4a2663c4 other_jetton_master:MsgAddressInt other_jetton_min_expected:(VarUInteger 16) = Swap;
 // the problem is that Tact doesn't support parsing slices as arbitrary structs
 
 
@@ -111,19 +106,29 @@ contract MultitokenDex {
         if (swap.loadUint(32) != 0x4a2663c4) {
             self.transferJettonTo(ctx.sender, msg.sender, received,
                 msg.query_id, "Unknown operation");
+            return;
         }
-        // SAFETY: we test whether provided address is among listed jetton masters
-        // it can fail due to invalid key length, but that's hard to achieve and doesn't harm DEX
-        let otherJettonMaster: Address = swap.loadAddress();
+        let other_jetton_master: Address = swap.loadAddress();
+        let other_jetton_min_expected: Int = swap.loadCoins();
         
-        
-        let other_jw: Address = self.jetton_wallets.get(otherJettonMaster)!!;
+        let other_jw: Address = self.jetton_wallets.get(other_jetton_master)!!;
         let old_balance_dst: Int = self.assets.get(other_jw)!!;
+        if (other_jetton_min_expected >= old_balance_dst) {
+            self.transferJettonTo(ctx.sender, msg.sender, received,
+                msg.query_id, "Liquidity pool doesn't have enough funds");
+            return;
+        }
+        // now, other_jetton_min_expected <= old_balance_dst - 1
         
         let swap_value: Int = self.calc_swap(old_balance_src!!, old_balance_dst, received);
-        
-        // TODO safeguard against slippage: paying attention to otherJettonMinExpected
-        // TODO safeguard against liquidity pool draining
+        if (swap_value >= old_balance_dst) {  // safeguard against liquidity pool draining
+            swap_value = old_balance_dst - 1; // still above other_jetton_min_expected, though we still check this next
+        }
+        if (swap_value < other_jetton_min_expected) {
+            self.transferJettonTo(ctx.sender, msg.sender, received,
+                msg.query_id, "Slippage protection: swap can't give requested count of tokens");
+            return;
+        }
         
         self.transferJettonTo(other_jw, msg.sender, swap_value, msg.query_id, "Swap completed");
         self.assets.set(ctx.sender, old_balance_src + received);
