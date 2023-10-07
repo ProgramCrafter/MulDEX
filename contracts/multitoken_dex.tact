@@ -8,6 +8,10 @@ native mulDiv(a: Int, b: Int, c: Int): Int;
 @name(fill_zeros)
 native fillZerosCheckLen(jetton_wallets: map<Address, Address>, want_len: Int): map<Address, Int>;
 
+@name(load_msg_addr)
+extends mutates native fun loadAddress(self: Slice): Address;
+// SAFETY: doesn't check if address is std-type
+
 
 
 message DexDeploy {
@@ -41,10 +45,9 @@ struct SystemInfo {
     owner_address: Address;
 }
 
-struct Swap {
-    otherJettonMaster: Address;
-    // TODO (see below): otherJettonMinExpected: Int as coins;
-}
+// swap#4a2663c4 otherJettonMaster:MsgAddressInt = Swap;
+// TODO (see below): add also  otherJettonMinExpected:(VarUInteger 16)
+// the problem is that Tact doesn't support parsing slices as arbitrary structs
 
 
 
@@ -103,8 +106,16 @@ contract MultitokenDex {
             return;
         }
         
-        let swap: Swap = msg.forward_payload % Swap;
-        let other_jw: Address = self.jetton_wallets.get(swap.otherJettonMaster)!!;
+        // let swap: Swap = msg.forward_payload % Swap;
+        let /*mut*/ swap: Slice = msg.forward_payload;
+        if (swap.loadUint(32) != 0x4a2663c4) {
+            self.transferJettonTo(ctx.sender, msg.sender, received,
+                msg.query_id, "Unknown operation");
+        }
+        let otherJettonMaster: Address = swap.loadAddress();
+        
+        
+        let other_jw: Address = self.jetton_wallets.get(otherJettonMaster)!!;
         let old_balance_dst: Int = self.assets.get(other_jw)!!;
         
         let swap_value: Int = self.calc_swap(old_balance_src!!, old_balance_dst, received);
