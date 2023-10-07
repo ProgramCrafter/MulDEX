@@ -98,12 +98,12 @@ contract MultitokenDex {
         
         // insufficient value to process token
         if (ctx.value <= ton("0.4")) {
-            self.transferJettonTo(ctx.sender, msg.from, received,
+            self.transferJettonTo(ctx.sender, msg.sender, received,
                 msg.query_id, "Insufficient value to process token");
             return;
         }
         
-        let swap: Swap = msg.forwardPayload % Swap;
+        let swap: Swap = msg.forward_payload % Swap;
         let other_jw: Address = self.jetton_wallets.get(swap.otherJettonMaster)!!;
         let old_balance_dst: Int = self.assets.get(other_jw)!!;
         
