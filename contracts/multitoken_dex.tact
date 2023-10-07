@@ -131,7 +131,7 @@ contract MultitokenDex {
         }
         
         self.transferJettonTo(other_jw, msg.sender, swap_value, msg.query_id, "Swap completed");
-        self.assets.set(ctx.sender, old_balance_src + received);
+        self.assets.set(ctx.sender, old_balance_src!! + received);
         self.assets.set(other_jw, old_balance_dst - swap_value);
         self.swap_base = self.swap_base + received - swap_value;
     }
@@ -180,12 +180,12 @@ contract MultitokenDex {
     get fun calc_swap_by_jw_addrs(jetton_src: Address, jetton_dst: Address, value_src: Int): Int {
         let asset_src: Int = self.assets.get(jetton_src)!!;
         let asset_dst: Int = self.assets.get(jetton_dst)!!;
-        return calc_swap(asset_src, asset_dst, value_src);
+        return self.calc_swap(asset_src, asset_dst, value_src);
     }
     
     get fun calc_swap_by_master_addrs(jetton_src: Address, jetton_dst: Address, value_src: Int): Int {
         let asset_src: Int = self.assets.get(self.jetton_wallets.get(jetton_src)!!)!!;
         let asset_dst: Int = self.assets.get(self.jetton_wallets.get(jetton_dst)!!)!!;
-        return calc_swap(asset_src, asset_dst, value_src);
+        return self.calc_swap(asset_src, asset_dst, value_src);
     }
 }
