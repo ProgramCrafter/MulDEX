@@ -1,15 +1,149 @@
+#pragma compute-asm-ltr;
+
+#include "./imports/helper.fc";
 #include "./imports/utils.fc";
 
-{-
-    global cell jetton_wallets;
-    global cell assets;
-    global int assets_sum;
-    
-    global cell jetton_masters;
--}
-#include "./imports/data.fc";
+;; block.tlb
 
-#include "./imports/messages.fc";
+(builder, ()) __store_$message_pfx(builder out, slice destination) inline {
+    out~store_uint(0x10, 6);
+    out~store_slice(destination);
+    return ~store_uint(out, 0, 111);
+}
+
+{-
+message DexDeploy {
+    query_id: Int as uint64;
+    jetton_wallets: map<Address, Address>;
+}
+
+message(0x7362d09c) TokenNotification {
+    query_id: Int as uint64;
+    amount: Int as coins;
+    sender: Address;
+    forward_payload: Slice as remaining;
+}
+
+message(0x0f8a7ea5) JettonTransfer {
+    query_id: Int as uint64;
+    amount: Int as coins;
+    destination: Address;
+    response_destination: Address;
+    custom_payload: Cell? = null;
+    forward_ton_amount: Int as coins;
+    forward_payload: Slice as remaining;
+}
+-}
+
+const int __op_DexDeploy = 0x0f656aab;
+cell __load_DexDeploy(slice in_msg_body) inline {
+    return in_msg_body.preload_ref();
+}
+
+const int __token_op_Swap = 0x4a2663c4;
+const int __op_TokenNotification = 0x7362d09c;
+(int, int, slice, slice) __load_TokenNotification(slice in_msg_body) inline {
+    return (in_msg_body~load_uint(64),
+            in_msg_body~load_coins(),
+            in_msg_body~load_msg_addr(),
+            in_msg_body);
+}
+
+(builder, ()) __store_JettonTransfer(builder out, (int, int, slice, slice) params) inline {
+    var (query_id, amount, destination, comment) = params;
+    out~store_uint(0x0f8a7ea5, 32);
+    out~store_uint(query_id, 64);
+    out~store_coins(amount);
+    out~store_slice(destination);
+    out~store_slice(destination);
+    out~store_uint(0, 1);
+    out~store_coins(1000);          ;; 0.000001 - nesting messages is impossible
+    out~store_uint(0, 33);
+    return ~store_slice(out, comment);
+}
+
+{-
+    id: Int as uint64;       // to create more than one pool
+    owner_address: Address;  // owner is only required for initialization
+    
+    tokens_count: Int as uint16;
+    jetton_wallets: map<Address, Address>;  // jetton master -> our wallet
+    assets: map<Address, Int>;              // our jetton wallet -> balance
+    swap_base: Int as uint128 = 0;          // base value for calculating swaps, == `sum(assets)`
+-}
+
+builder __build_$data(builder out, (int, slice, int, cell, cell, int) params) inline {
+    var (id, owner_address, tokens_count, jetton_wallets, assets, swap_base) = v;
+    out~store_uint(id, 64);
+    out~store_slice(owner_address);
+    out~store_uint(tokens_count, 16);
+    out~store_dict(jetton_wallets);
+    out~store_dict(assets);
+    return ~store_uint(out, swap_base, 128);
+}
+
+(int, (int, slice, int, cell, cell, int)) __load_$data(slice cs) inline {
+    var id = cs~load_uint(64);
+    var owner_address = cs~load_msg_addr();
+    var tokens_count = cs~load_uint(16);
+    var jetton_wallets = cs~load_dict();
+    if (jetton_wallets.cell_null?()) {
+        return (0, (id, owner_address, tokens_count, null(), null(), 0));
+    }
+    var assets = cs~load_dict();
+    var swap_base = cs~load_uint(128);
+    return (-1, (id, owner_address, tokens_count, jetton_wallets, assets, swap_base));
+}
+
+{-
+    fun transferJettonTo(jetton_wallet: Address, destination: Address, amount: Int, query_id: Int, message: String) {
+        if (amount > 0) {
+            send(SendParameters{
+                to: jetton_wallet,
+                value: 0,
+                mode: SendRemainingValue,
+                body: JettonTransfer{query_id: query_id, amount: amount, destination: destination, response_destination: destination, custom_payload: message.asComment(), forward_ton_amount: self.forward_ton_amount, forward_payload: emptySlice()}.toCell()
+            });
+        }
+    }
+-}
+
+() $self.transfer_jetton_to((slice, slice, int, int) params, slice msg) impure inline {
+    var (jetton_wallet, destination, amount, query_id) = params;
+    if (amount == 0) {return ();}
+    
+    send_raw_message(begin_cell()
+        .__store_$message_pfx(jetton_wallet)
+        .__store_JettonTransfer((query_id, amount, destination, msg))
+        .end_cell(), 64);
+}
+() $self.refund([slice, slice, int, int] params, slice msg) impure inline {
+    return $self.transfer_jetton_to(untuple4(params), msg);
+}
+
+{-
+    fun calc_swap(had_token_src: Int, had_token_dst: Int, recv_token_src: Int): Int {
+        // Swap maintains invariant
+        // (balance1 * balance2 + balance1 * balance3 + ... + balance[n-1] * balance[n]) = const
+        
+        // It can be proven then that the swap is calculated as following:
+        return mulDiv(recv_token_src, self.swap_base - had_token_src, self.swap_base + recv_token_src - had_token_dst);
+        
+        // for two tokens, essentially equivalent to
+        // return mulDiv(recv_token_src, had_token_dst, had_token_src + recv_token_src);
+    }
+-}
+
+int $self.calc_swap(int had_token_src, int had_token_dst, int recv_token_src, int swap_base) inline {
+    ;; Swap maintains invariant
+    ;; (balance1 * balance2 + balance1 * balance3 + ... + balance[n-1] * balance[n]) = const
+    
+    ;; It can be proven then that the swap is calculated as following:
+    return muldiv(recv_token_src, swap_base - had_token_src, swap_base + recv_token_src - had_token_dst);
+    
+    ;; for two tokens, essentially equivalent to
+    ;; return muldiv(recv_token_src, had_token_dst, had_token_src + recv_token_src);
+}
 
 
 () recv_internal(int msg_value, cell in_msg, slice in_msg_body) {
@@ -17,24 +151,66 @@
     (int bounced, slice sender) = in_msg_full~load_bounce_source();
     terminate_if(bounced);
     
-    int op = in_msg_body~load_uint(32);
+    var (init, (id, owner, tokens_count, jetton_wallets, assets, swap_base)) = get_data().begin_parse().__load_$data();
     
-    ;; uninit contract returns `false`
-    if (~ load_contract()) {
-        terminate_if(op != op::dex_init);
+    if (init) {
+        int op = in_msg_body~load_uint(32);
+        throw_unless(131, in_msg_body~load_uint(32) == __op_TokenNotification); ;; ignoring incoming NFTs
         
-        jetton_wallets = in_msg_body~load_dict();
-        while (~ jetton_masters.dict_empty?()) {
-            (_, slice master) = jetton_masters~pop_max(267);
-            (slice wallet_addr, int ok) = jetton_wallets.dict_get?(267, master);
-            throw_unless(101, ok);
-            assets~dict_set(267, wallet_addr, zero_asset);
+        var (query_id, amount, jetton_sender, op_body) = in_msg_body.__load_TokenNotification();
+        if (op_body.slice_refs()) { op_body = op_body.preload_ref().begin_parse(); }
+        
+        var refund = tuple4(sender, jetton_sender, amount, query_id);
+        
+        (slice old_balance_src, int known_jetton) = assets.dict_get?(257, sender);
+        ifnot (known_jetton) {
+            return $self.refund(refund, "Unknown original jetton");
         }
-        assets_sum = 0;
+        if (msg_value <= 400 * 10000000) {
+            return $self.refund(refund, "Insufficient value to process token");
+        }
         
-        save_contract();
-        return ();
+        ;; parsing forward_payload: no Either bit; swap struct either in ref or inline
+        ;; swap#4a2663c4[__token_op_Swap] wanted_master:MsgAddressInt min_expected:(VarUInteger 16) = OpBody;
+        
+        if ((op_body.slice_bits() < 303) | (op_body~load_uint(32) != __token_op_Swap)) {
+            return $self.refund(refund, "Unknown operation");
+        }
+        
+        (slice other_jw, int known_master) = jetton_wallets.dict_get?(257, op_body~load_msg_addr());
+        ifnot (known_master) {
+            return $self.refund(refund, "Unknown jetton master");
+        }
+        
+        int old_balance_dst = assets.dict_get_unwrap(257, other_jw).preload_uint(128);
+        int other_jetton_min_expected = op_body~load_coins();
+        
+        if (other_jetton_min_expected >= old_balance_dst) {
+            return $self.refund(refund, "Liquidity pool doesn't have enough funds");
+        }
+        ;; now, other_jetton_min_expected <= old_balance_dst - 1
+        
+        int swap_value = min(old_balance_dst - 1,
+                             $self.calc_swap(old_balance_src, old_balance_dst, received, swap_base));
+        if (other_jetton_min_expected > swap_value) {
+            return $self.refund(refund, "Slippage protection: swap can't give requested count of tokens");
+        }
+        
+        
+        $self.transfer_jetton_to(other_jw, jetton_sender, swap_value, query_id, "Swap completed");
+        assets~dict_set_builder(257, sender, begin_cell().store_uint(old_balance_src + received, 128));
+        assets~dict_set_builder(257, other_jw, begin_cell().store_uint(old_balance_dst - swap_value, 128));
+        swap_base = swap_base + received - swap_value;
+    } else {
+        throw_unless(4429, equal_slices(sender, owner));
+        throw_unless(131, in_msg_body~load_uint(32) == __op_DexDeploy);
+        
+        jetton_wallets = in_msg_body.__load_DexDeploy();
+        assets = fill_zeros(jetton_wallets, tokens_count);
+        
+        send_raw_message(begin_cell().__store_$message_pfx(owner)
+                        .store_uint(0, 32).store_slice("Deployed").end_cell(),  64);
     }
     
-    
+    begin_cell().__build_$data((id, owner, tokens_count, jetton_wallets, assets, swap_base)).end_cell().set_data();
 }

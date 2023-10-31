@@ -13,3 +13,6 @@
 (slice, int) dict_get?(cell dict, int key_len, slice index)
   asm(index dict key_len) "DICTGET" "NULLSWAPIFNOT";
 
+slice dict_get_unwrap(cell dict, int key_len, slice index)
+  asm(index dict key_len) "DICTGET" "131 THROWIFNOT";
+
