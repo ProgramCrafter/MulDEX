@@ -214,3 +214,74 @@ int $self.calc_swap(int had_token_src, int had_token_dst, int recv_token_src, in
     
     begin_cell().__build_$data((id, owner, tokens_count, jetton_wallets, assets, swap_base)).end_cell().set_data();
 }
+
+{-
+    get fun get_system_info(): SystemInfo {
+        return SystemInfo{id: self.id, jetton_wallets: self.jetton_wallets, assets: self.assets, owner_address: self.owner_address};
+    }
+    
+    get fun get_swap_base(): Int {
+        return self.swap_base;
+    }
+    
+    get fun calc_price_multiplied(jetton_wallet: Address, multiplier: Int): Int {
+        let asset: Int = self.assets.get(jetton_wallet)!!;
+        let v: Int = self.swap_base * (self.tokens_count - 1);
+        return mulDiv(self.swap_base - asset, multiplier, v);
+    }
+    
+    // get fun calc_all_prices_multiplied(multiplier: Int): map<Address, Int>
+    //     Tact doesn't support iteration over maps, though
+    
+    get fun calc_swap_by_jw_addrs(jetton_src: Address, jetton_dst: Address, value_src: Int): Int {
+        let asset_src: Int = self.assets.get(jetton_src)!!;
+        let asset_dst: Int = self.assets.get(jetton_dst)!!;
+        return self.calc_swap(asset_src, asset_dst, value_src);
+    }
+    
+    get fun calc_swap_by_master_addrs(jetton_src: Address, jetton_dst: Address, value_src: Int): Int {
+        let asset_src: Int = self.assets.get(self.jetton_wallets.get(jetton_src)!!)!!;
+        let asset_dst: Int = self.assets.get(self.jetton_wallets.get(jetton_dst)!!)!!;
+        return self.calc_swap(asset_src, asset_dst, value_src);
+    }
+-}
+
+_ get_system_info() method_id {
+    var (init, info) = get_data().begin_parse().__load_$data();
+    throw_unless(100, init);
+    return info;
+}
+
+int get_swap_base() method_id {
+    var (init, (id, owner, tokens_count, jetton_wallets, assets, swap_base)) = get_data().begin_parse().__load_$data();
+    throw_unless(100, init);
+    return swap_base;
+}
+
+int calc_price_multiplied(slice jetton_wallet, int multiplier) method_id {
+    var (init, (id, owner, tokens_count, jetton_wallets, assets, swap_base)) = get_data().begin_parse().__load_$data();
+    throw_unless(100, init);
+    int asset = assets.dict_get_unwrap(267, jetton_wallet).preload_uint(128);
+    int v = swap_base * (tokens_count - 1);
+    return muldiv(swap_base - asset, multiplier, v);
+}
+
+;; int calc_all_prices_multiplied(int multiplier) method_id: TODO
+
+int calc_swap_by_jw_addrs(slice jetton_src, slice jetton_dst, int value_src) method_id {
+    var (init, (id, owner, tokens_count, jetton_wallets, assets, swap_base)) = get_data().begin_parse().__load_$data();
+    throw_unless(100, init);
+    int asset_src = assets.dict_get_unwrap(267, jetton_src).preload_uint(128);
+    int asset_dst = assets.dict_get_unwrap(267, jetton_dst).preload_uint(128);
+    return $self.calc_swap(asset_src, asset_dst, value_src);
+}
+
+int calc_swap_by_master_addrs(slice master_src, slice master_dst, int value_src) method_id {
+    var (init, (id, owner, tokens_count, jetton_wallets, assets, swap_base)) = get_data().begin_parse().__load_$data();
+    throw_unless(100, init);
+    slice jetton_src = jetton_wallets.dict_get_unwrap(267, master_src);
+    slice jetton_dst = jetton_wallets.dict_get_unwrap(267, master_dst);
+    int asset_src = assets.dict_get_unwrap(267, jetton_src).preload_uint(128);
+    int asset_dst = assets.dict_get_unwrap(267, jetton_dst).preload_uint(128);
+    return $self.calc_swap(asset_src, asset_dst, value_src);
+}
